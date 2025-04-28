@@ -1,0 +1,32 @@
+name: FullyConnected
+
+data:
+  data_file: data/pions.h5
+  transform_num_points:
+    - [Dequantize, {}]
+    - [Log, {alpha: 1.}]
+    - [StandardScaler, {shape: [1, 78]}]
+  transform_inc:
+    - [StandardScaler, {shape: [1, 1]}]
+  batch_size: 1024
+  batch_size_val: 4096
+
+model:
+  name: FullyConnected
+  dim_input: 78
+  dim_condition: 1
+  dim_time: 6
+  hidden_dims:
+    - 128
+    - 256
+    - 512
+    - 256
+    - 128
+
+training:
+  epochs: 1000
+  optimizer:
+    name: Adam
+    lr: 0.001
+  scheduler:
+    name: OneCycleLR

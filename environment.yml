@@ -1,0 +1,13 @@
+name: fastshowerflow
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pytorch=2.6
+  - h5py=3.12
+  - numpy=2.2
+  - matplotlib=3.10
+  - PyYAML=6.0
+  - pot=0.9
+  - pre-commit=4.1
+  - ipykernel
