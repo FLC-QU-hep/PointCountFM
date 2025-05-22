@@ -1,4 +1,4 @@
-# #PointsFM
+# PointCountFM
 A conditional flow matching model to generate the number of points per layer in a particle shower. The model can be used as part of a generative model for particle showers. It generates the number of points per layer in a particle shower given the incident energy.
 
 ## requirements
