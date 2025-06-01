@@ -14,7 +14,7 @@ To install the python requirements, you can use either pip or conda. Choose the 
 ### python (with conda)
 With conda, you can install the required packages by running:
 ```bash
-# make sure to have conda loaded and installed
+# make sure to have conda installed and loaded
 conda env create -f environment.yml
 conda activate fastshowerflow
 ```
@@ -130,3 +130,6 @@ This will install pre-commit and set up the checks. If you want to run the check
 pre-commit run --all-files
 ```
 This will run all checks on all files.
+
+---
+If you have any questions or comments about this repository, please contact [thorsten.buss@uni-hamburg.de](mailto:thorsten.buss@uni-hamburg.de).
