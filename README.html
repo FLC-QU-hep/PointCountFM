@@ -1,0 +1,346 @@
+<h1 id="pointcountfm">PointCountFM</h1>
+<p><a href="https://www.python.org/"><img
+src="https://img.shields.io/badge/Python_3.13-306998?logo=python&amp;logoColor=white"
+alt="Python Version" /></a> <a href="https://pytorch.org/"><img
+src="https://img.shields.io/badge/PyTorch_2.8-ee4c2c?logo=pytorch&amp;logoColor=white"
+alt="PyTorch Version" /></a> <a
+href="https://github.com/FLC-QU-hep/PointCountFM?tab=MIT-1-ov-file"><img
+src="https://img.shields.io/badge/license-MIT-green"
+alt="License" /></a> <a
+href="https://github.com/FLC-QU-hep/PointCountFM/actions/workflows/pre_commit.yaml"><img
+src="https://img.shields.io/github/actions/workflow/status/FLC-QU-hep/PointCountFM/pre_commit.yaml?label=pre-commit&amp;logo=github"
+alt="Build Status" /></a> <a
+href="https://github.com/FLC-QU-hep/PointCountFM/actions/workflows/test.yaml"><img
+src="https://img.shields.io/github/actions/workflow/status/FLC-QU-hep/PointCountFM/test.yaml?label=tests&amp;logo=github"
+alt="Tests" /></a></p>
+<p>A conditional flow matching model to generate the number of points
+per layer in a particle shower. The model can be used as part of a
+generative model for particle showers. It generates the number of points
+per layer in a particle shower given the incident particle type and
+kinematics.</p>
+<h2 id="table-of-contents">Table of Contents <!-- omit in toc --></h2>
+<ul>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#setup">Setup</a>
+<ul>
+<li><a href="#clone-repository">Clone repository</a></li>
+<li><a href="#install-dependencies">Install dependencies</a></li>
+</ul></li>
+<li><a href="#data">Data</a></li>
+<li><a href="#usage">Usage</a>
+<ul>
+<li><a href="#options">options</a></li>
+</ul></li>
+<li><a href="#configuration">configuration</a>
+<ul>
+<li><a href="#model">model</a></li>
+<li><a href="#data-1">data</a></li>
+<li><a href="#training">training</a></li>
+</ul></li>
+<li><a href="#pre-commit">pre-commit</a></li>
+<li><a href="#testing">Testing</a></li>
+</ul>
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>pytorch: for training and inference of ML models</li>
+<li>numpy: only as input/output data format</li>
+<li>matplotlib: for visualization of data</li>
+<li>h5py: for reading training data and saving generated data</li>
+<li>pyyaml: for reading configuration files</li>
+<li>showerdata: for handling calorimeter shower data</li>
+</ul>
+<h2 id="setup">Setup</h2>
+<h3 id="clone-repository">Clone repository</h3>
+<p>To clone the repository, run:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone git@github.com:FLC-QU-hep/PointCountFM.git</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> PointCountFM</span></code></pre></div>
+<h3 id="install-dependencies">Install dependencies</h3>
+<p>Choose one of the following options to install the required
+dependencies. Only <code>uv</code> has to be tested.</p>
+<h4 id="with-uv-option-1">With <code>uv</code> (option 1):</h4>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> sync <span class="at">--all-groups</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> .venv/bin/activate</span></code></pre></div>
+<h4 id="with-pip-venv-option-2">With <code>pip</code> +
+<code>venv</code> (option 2):</h4>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3.13</span> <span class="at">-m</span> venv <span class="at">--prompt</span> PointCountFM .venv</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> .venv/bin/activate</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> .</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">--group</span> dev</span></code></pre></div>
+<p>If you want to try to run the code with a different python version,
+you might need to adapt the <code>pyproject.toml</code> file
+accordingly.</p>
+<h4 id="with-conda-option-3">With <code>conda</code> (option 3):</h4>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">conda</span> env create <span class="at">-f</span> environment.yaml</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">conda</span> activate PointCountFM</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> .</span></code></pre></div>
+<p>All packages available from conda-forge will be installed via conda,
+the rest via pip.</p>
+<h2 id="data">Data</h2>
+<p>You can use your own data or download the AllShowers dataset from
+Zenodo: <a
+href="https://zenodo.org/records/18020348">https://zenodo.org/records/18020348</a>
+To download layer level shower data (1.3 GB), run:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> data</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-o</span> data/layer_level.h5 https://zenodo.org/records/18020348/files/layer_level.h5<span class="pp">?</span>download=1</span></code></pre></div>
+<p>If you want to use you own data, store it in HDF5 format with the
+following keys:</p>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 10%" />
+<col style="width: 11%" />
+<col style="width: 63%" />
+</colgroup>
+<thead>
+<tr>
+<th>key</th>
+<th>shape</th>
+<th>dtype</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>directions</td>
+<td>(n, 3)</td>
+<td>float32</td>
+<td>incident particle directions</td>
+</tr>
+<tr>
+<td>energies</td>
+<td>(n, 1)</td>
+<td>float32</td>
+<td>incident particle energies (in any consistent unit)</td>
+</tr>
+<tr>
+<td>labels</td>
+<td>(n)</td>
+<td>int32</td>
+<td>incident particle labels</td>
+</tr>
+<tr>
+<td>num_points</td>
+<td>(n, m)</td>
+<td>int32</td>
+<td>number of points per layer</td>
+</tr>
+</tbody>
+</table>
+<p>n is the data set size and m is the number of layers in the
+calorimeter, which needs to be consistent with <code>dim_input</code> in
+the configuration file.</p>
+<h2 id="usage">Usage</h2>
+<p>The main entry point is the <code>pointcountfm/trainer.py</code>
+script. It can be run with the following command:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> pointcountfm/trainer.py <span class="pp">[</span><span class="ss">options</span><span class="pp">]</span> config/config.yaml</span></code></pre></div>
+<p>The configuration file <code>config/config.yaml</code> specifies all
+hyper-parameters, preprocessing steps, and the training data. The script
+will train a model and save it to
+<code>results/%Y%m%d_%H%M%S_name/</code> where <code>name</code> is the
+name specified in the configuration file and <code>%Y%m%d_%H%M%S</code>
+is the current date and time. It also generates 50,000 samples and saves
+them to <code>results/%Y%m%d_%H%M%S_name/new_samples.h5</code>.</p>
+<h3 id="options">options</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 8%" />
+<col style="width: 70%" />
+</colgroup>
+<thead>
+<tr>
+<th>Option</th>
+<th>Short</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--help</code></td>
+<td><code>-h</code></td>
+<td>Show the help message</td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td><code>-d</code></td>
+<td>The device to run the model on (e.g. <code>cpu</code>,
+<code>mps</code>, or <code>cuda</code>) (if not specified it will be
+automatically selected)</td>
+</tr>
+<tr>
+<td><code>--time</code></td>
+<td><code>-t</code></td>
+<td>Run a timing test on the model</td>
+</tr>
+<tr>
+<td><code>--distill</code></td>
+<td></td>
+<td>Distill the trained model to a single-shot model</td>
+</tr>
+<tr>
+<td><code>--fast-dev-run</code></td>
+<td></td>
+<td>Run a fast development run for testing</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration">configuration</h2>
+<p>The configuration file is a YAML with the following keys:</p>
+<ul>
+<li><code>model</code>: specifies the model architecture and
+hyper-parameters</li>
+<li><code>data</code>: specifies the training data and preprocessing
+steps</li>
+<li><code>training</code>: specifies the training hyper-parameters</li>
+<li><code>name</code>: a descriptive name for the run</li>
+</ul>
+<h3 id="model">model</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 9%" />
+<col style="width: 69%" />
+</colgroup>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>The model class (<code>FullyConnected</code> or
+<code>ConcatSquash</code>)</td>
+</tr>
+<tr>
+<td><code>dim_input</code></td>
+<td>int</td>
+<td>The dimension of the input data</td>
+</tr>
+<tr>
+<td><code>dim_condition</code></td>
+<td>int</td>
+<td>The dimension of the condition (number of particle labels + 3
+(directions) + 1 (energies))</td>
+</tr>
+<tr>
+<td><code>dim_time</code></td>
+<td>int</td>
+<td>The dimension of the time embedding</td>
+</tr>
+<tr>
+<td><code>hidden_dims</code></td>
+<td>list</td>
+<td>A list of hidden dimensions for the model</td>
+</tr>
+</tbody>
+</table>
+<h3 id="data-1">data</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 9%" />
+<col style="width: 69%" />
+</colgroup>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>data_file</code></td>
+<td>string</td>
+<td>The path to the training data</td>
+</tr>
+<tr>
+<td><code>batch_size</code></td>
+<td>int</td>
+<td>The batch size for training</td>
+</tr>
+<tr>
+<td><code>batch_size_val</code></td>
+<td>int</td>
+<td>The batch size for validation</td>
+</tr>
+<tr>
+<td><code>transform_num_points</code></td>
+<td>list</td>
+<td>A list of the preprocessing steps for the number of points per layer
+(optional)</td>
+</tr>
+<tr>
+<td><code>transform_inc</code></td>
+<td>list</td>
+<td>A list of the preprocessing steps for the incident energy
+(optional)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="training">training</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 9%" />
+<col style="width: 69%" />
+</colgroup>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>epochs</code></td>
+<td>int</td>
+<td>The number of epochs to train the model</td>
+</tr>
+<tr>
+<td><code>optimizer</code></td>
+<td>dict</td>
+<td>The optimizer (<code>name</code> key) and its hyper-parameters</td>
+</tr>
+<tr>
+<td><code>scheduler</code></td>
+<td>dict</td>
+<td>The learning rate scheduler (<code>name</code> key) and its
+hyper-parameters (optional)</td>
+</tr>
+</tbody>
+</table>
+<p>If you use OneCycleLR or CosineAnnealing as a scheduler, the maximum
+number of iterations is calculated automatically.</p>
+<p>For an example configuration file, see
+<code>config/config.yaml</code>.</p>
+<h2 id="pre-commit">pre-commit</h2>
+<p>This repository uses <a href="https://pre-commit.com">pre-commit</a>
+to run checks on the code before committing. To install pre-commit,
+run:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pre-commit</span> install</span></code></pre></div>
+<p>This will install pre-commit and set up the checks. If you want to
+run the checks manually, you can run:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pre-commit</span> run <span class="at">--all-files</span></span></code></pre></div>
+<p>This will run all checks on all files.</p>
+<h2 id="testing">Testing</h2>
+<p>To run the unit tests, run:</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> unittest discover <span class="at">-s</span> test <span class="at">-p</span> <span class="st">&quot;*_test.py&quot;</span> <span class="at">-v</span></span></code></pre></div>
+<hr />
+<p>If you have any questions or comments about this repository, please
+contact <a
+href="mailto:thorsten.buss@uni-hamburg.de">thorsten.buss@uni-hamburg.de</a>.</p>

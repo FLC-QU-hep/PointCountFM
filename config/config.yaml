@@ -1,20 +1,21 @@
-name: FullyConnected
+name: PointCountFM
 
 data:
-  data_file: data/pions.h5
+  data_file: data/layer_level.h5
   transform_num_points:
-    - [Dequantize, {}]
-    - [Log, {alpha: 1.}]
+    - [Log, {alpha: 0.5}]
     - [StandardScaler, {shape: [1, 78]}]
   transform_inc:
     - [StandardScaler, {shape: [1, 1]}]
   batch_size: 1024
   batch_size_val: 4096
+  num_val: 50000
+  num_classes: 12
 
 model:
   name: FullyConnected
   dim_input: 78
-  dim_condition: 1
+  dim_condition: 16
   dim_time: 6
   hidden_dims:
     - 128

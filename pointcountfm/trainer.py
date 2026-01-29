@@ -5,18 +5,20 @@ import os
 import shutil
 import sys
 import time
+import warnings
 
 import h5py
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import yaml
-from matplotlib import pyplot as plt
 
-import flow_matching
-import models
-from data_loader import get_loaders
-from preprocessing import Transformation
+from pointcountfm import flow_matching, models
+from pointcountfm.data_loader import DataLoader, get_loaders
+from pointcountfm.preprocessing import Transformation
 
 
 class Trainer:
@@ -77,6 +79,31 @@ class Trainer:
             self.train_loader_distill = None
             self.val_loader_distill = None
 
+        example_inputs = torch.ones(1, 1, dtype=torch.float32) * 50.0
+        if self.train_loader.num_classes > 0:
+            example_inputs = torch.cat(
+                (
+                    example_inputs,
+                    torch.zeros(1, self.train_loader.num_classes, dtype=torch.float32),
+                ),
+                dim=1,
+            )
+            example_inputs[:, 1] = 1.0  # Set one class to 1.0
+        if self.dim_condition > example_inputs.shape[1]:
+            example_inputs = torch.cat(
+                (
+                    example_inputs,
+                    torch.zeros(
+                        1,
+                        self.dim_condition - example_inputs.shape[1],
+                        dtype=torch.float32,
+                    ),
+                ),
+                dim=1,
+            )
+            example_inputs[:, -1] = 1.0
+        self.example_inputs = example_inputs
+
         print("Trainer initialized.")
         print(f"Device: {self.device}")
         print(f"num_train: {self.train_loader.data.shape[0]}")
@@ -92,10 +119,7 @@ class Trainer:
         config = config.copy()
         if "name" not in config:
             raise ValueError("Model configuration missing.")
-        if "flow" in config:
-            flow_config = config.pop("flow")
-        else:
-            flow_config = {}
+        flow_config = config.pop("flow") if "flow" in config else {}
         model_name = config.pop("name")
         model_class = getattr(models, model_name)
         model_object = model_class(**config)
@@ -112,12 +136,18 @@ class Trainer:
             raise ValueError("Learning rate missing.")
         return optimizer_class(self.model.parameters(), **config)
 
-    def __init_scheduler(self, config: dict) -> optim.lr_scheduler._LRScheduler:
+    def __init_scheduler(self, config: dict) -> optim.lr_scheduler._LRScheduler | None:
         config = config.copy()
         if "name" not in config:
             return None
         scheduler_name = config.pop("name")
-        scheduler_class = getattr(optim.lr_scheduler, scheduler_name)
+        if scheduler_name not in optim.lr_scheduler.__all__:
+            raise ValueError(
+                f"Scheduler {scheduler_name} not found in torch.optim.lr_scheduler."
+            )
+        scheduler_class: type[optim.lr_scheduler._LRScheduler] = getattr(
+            optim.lr_scheduler, scheduler_name
+        )
         if scheduler_class is optim.lr_scheduler.OneCycleLR:
             config["max_lr"] = self.lr
             config["total_steps"] = len(self.train_loader) * self.epochs
@@ -144,6 +174,8 @@ class Trainer:
         torch.save(checkpoint, self.checkpoint_path)
 
     def __save_checkpoint_distill(self) -> None:
+        if self.model_distill is None or self.optimizer_distill is None:
+            raise ValueError("Distilled model or optimizer not initialized.")
         checkpoint = {
             "model": self.model_distill.state_dict(),
             "optimizer": self.optimizer_distill.state_dict(),
@@ -168,6 +200,8 @@ class Trainer:
             self.scheduler.load_state_dict(checkpoint["scheduler"])
 
     def __load_checkpoint_distill(self) -> None:
+        if self.model_distill is None or self.optimizer_distill is None:
+            raise ValueError("Distilled model or optimizer not initialized.")
         checkpoint = torch.load(
             self.checkpoint_path_distill,
             map_location=self.device,
@@ -220,7 +254,8 @@ class Trainer:
                 loss.backward()
                 self.optimizer.step()
                 train_loss += loss.item()
-                self.scheduler.step()
+                if self.scheduler is not None:
+                    self.scheduler.step()
             train_loss /= len(self.train_loader)
             self.train_losses.append(train_loss)
 
@@ -251,17 +286,91 @@ class Trainer:
         print("Training finished.")
         sys.stdout.flush()
 
+    def sample_condition(
+        self,
+        num_samples: int,
+        min_energy: float | None = None,
+        max_energy: float | None = None,
+        class_label: int | None = None,
+        direction: tuple[float, float, float] = (0.0, 0.0, 1.0),
+    ) -> torch.Tensor:
+        if min_energy is None:
+            min_energy = self.train_loader.energy_min
+        if max_energy is None:
+            max_energy = self.train_loader.energy_max
+
+        incident_energy = min_energy + (max_energy - min_energy) * torch.rand(
+            num_samples, 1
+        )
+        if self.train_loader.num_classes == 0:
+            return incident_energy
+
+        if class_label is not None:
+            class_label_tensor = torch.full(
+                (num_samples,), class_label, dtype=torch.int64
+            )
+        else:
+            class_label_tensor = torch.randint(
+                0, self.train_loader.num_classes, (num_samples,), dtype=torch.int64
+            )
+        class_label_tensor = F.one_hot(
+            class_label_tensor, num_classes=self.train_loader.num_classes
+        ).to(torch.get_default_dtype())
+        if self.dim_condition > 1 + self.train_loader.num_classes:
+            direction_tensor = torch.tensor(
+                direction, dtype=torch.get_default_dtype()
+            ).reshape(1, 3)
+            direction_tensor = direction_tensor.repeat(num_samples, 1)
+            return torch.cat(
+                (incident_energy, class_label_tensor, direction_tensor), dim=1
+            )
+        else:
+            return torch.cat((incident_energy, class_label_tensor), dim=1)
+
+    @staticmethod
+    def __get_condition(
+        data_loader: DataLoader, num_samples: int | None = None
+    ) -> torch.Tensor:
+        if num_samples is None:
+            num_samples = int(data_loader.condition.shape[0])
+        if num_samples > data_loader.condition.shape[0]:
+            warnings.warn(
+                "Number of samples requested exceeds number of validation samples.",
+                UserWarning,
+            )
+            condition = data_loader.condition
+        else:
+            condition = data_loader.condition[:num_samples]
+        condition[:, :1] = data_loader.transform_inc.inverse(condition[:, :1])
+        condition = condition.to("cpu", copy=True)
+        if len(condition) < num_samples:
+            repeats = -(-num_samples // len(condition))  # Ceiling division
+            condition = condition.repeat(repeats, 1)[:num_samples]
+        return condition
+
+    def get_val_condition(self, num_samples: int | None = None) -> torch.Tensor:
+        return self.__get_condition(self.val_loader, num_samples)
+
+    def get_train_condition(self, num_samples: int | None = None) -> torch.Tensor:
+        return self.__get_condition(self.train_loader, num_samples)
+
     def sample(
         self, condition: torch.Tensor, num_steps: int = 0, distilled: bool = False
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if num_steps == 0:
             num_steps = self.steps
         input_device = condition.device
-        condition = condition.to(self.device)
+        condition = condition.to(self.device, copy=True)
         model = self.model_distill if distilled else self.model
+        if model is None:
+            raise ValueError(
+                "Distilled model not initialized."
+                if distilled
+                else "Model not initialized."
+            )
         model.eval()
         with torch.no_grad():
-            condition = self.val_loader.transform_inc(condition)
+            condition[:, :1] = self.val_loader.transform_inc(condition[:, :1])
             samples, noise = model.sample_return_z(
                 (condition.shape[0], self.dim_data), num_steps, condition
             )
@@ -291,7 +400,7 @@ class Trainer:
             print("device:", self.device)
             print("dtype:", condition.dtype)
             sys.stdout.flush()
-            time_start = time.time()
+        time_start = time.time()
         cond_batches = torch.split(condition, batch_size)
         samples = []
         noise = []
@@ -336,12 +445,24 @@ class Trainer:
             num_steps=num_steps,
             distilled=distilled,
         )
+        energy = condition[:, 0:1]
+        if self.train_loader.num_classes == 0:
+            labels = None
+        else:
+            labels = torch.argmax(
+                condition[:, 1 : self.train_loader.num_classes + 1], dim=1
+            )
+        directions = condition[:, -3:] if self.train_loader.has_directions else None
         file_path = (
             self.new_samples_path_distilled if distilled else self.new_samples_path
         )
         with h5py.File(file_path, "w") as file:
-            file.create_dataset("energy", data=condition.numpy())
+            file.create_dataset("energy", data=energy.numpy())
             file.create_dataset("num_points", data=samples.numpy())
+            if labels is not None:
+                file.create_dataset("labels", data=labels.numpy())
+            if directions is not None:
+                file.create_dataset("directions", data=directions.numpy())
             if save_noise:
                 file.create_dataset("noise", data=noise.numpy())
                 file.create_dataset("preprocessed_data", data=samples_raw.numpy())
@@ -390,7 +511,8 @@ class Trainer:
                 self.steps = steps
 
             def forward(self, condition: torch.Tensor) -> torch.Tensor:
-                condition = self.transform_inc(condition)
+                condition = torch.clone(condition)
+                condition[:, :1] = self.transform_inc(condition[:, :1])
                 samples = self.model.sample(
                     (condition.shape[0], self.dim_data), self.steps, condition=condition
                 )
@@ -407,12 +529,7 @@ class Trainer:
         sampler = copy.deepcopy(sampler)
         sampler = sampler.to("cpu")
         sampler = sampler.to(torch.float32)
-        sampler = torch.jit.trace(
-            sampler,
-            example_inputs=50.0
-            * torch.ones(1, self.dim_condition, dtype=torch.float32),
-            check_trace=False,
-        )
+        sampler = torch.jit.trace(sampler, self.example_inputs, check_trace=False)
         torch.jit.save(sampler, self.compiled_path)
         print("Compiling finished.")
 
@@ -420,15 +537,22 @@ class Trainer:
         if not os.path.exists(self.new_samples_path):
             print("Sampling for distillation started.")
             sys.stdout.flush()
-            cond_test = 10.139 + 80 * torch.rand((5_000_000, 1))
-            self.sample_and_save(cond_test, 8192, save_noise=True, num_steps=200)
+            cond = torch.concatenate(
+                [
+                    self.get_train_condition(),
+                    self.get_val_condition(),
+                ],
+                dim=0,
+            )
+            self.sample_and_save(
+                cond, self.val_loader.batch_size, save_noise=True, num_steps=200
+            )
             print("Sampling finished.")
             print()
             sys.stdout.flush()
         data_config = self.data_config.copy()
         data_config["data_file"] = self.new_samples_path
-        data_config["ot_noise"] = True
-        data_config["load_preprocessed"] = True
+        data_config["load_noise"] = True
         self.train_loader_distill, self.val_loader_distill = get_loaders(**data_config)
         self.train_loader_distill.to(self.device)
         self.val_loader_distill.to(self.device)
@@ -439,16 +563,23 @@ class Trainer:
         self.scheduler_distill = optim.lr_scheduler.OneCycleLR(
             self.optimizer_distill,
             max_lr=1e-4,
-            total_steps=len(self.train_loader_distill) * 1000,
+            total_steps=len(self.train_loader_distill) * self.epochs,
         )
 
     def distill(self):
         if self.model_distill is None:
             self.__init_distill()
+        if (
+            self.model_distill is None
+            or self.optimizer_distill is None
+            or self.train_loader_distill is None
+            or self.val_loader_distill is None
+        ):
+            raise ValueError("Distilled model initialization failed.")
         print("Distillation started.")
         sys.stdout.flush()
 
-        for epoch in range(len(self.train_losses_distill), 1000):
+        for epoch in range(len(self.train_losses_distill), self.epochs):
             self.model_distill.train()
             train_loss = 0
             for batch in self.train_loader_distill:
@@ -461,7 +592,8 @@ class Trainer:
                 loss.backward()
                 self.optimizer_distill.step()
                 train_loss += loss.item()
-                self.scheduler_distill.step()
+                if self.scheduler_distill is not None:
+                    self.scheduler_distill.step()
             train_loss /= len(self.train_loader_distill)
 
             self.model_distill.eval()
@@ -476,7 +608,7 @@ class Trainer:
                     val_loss += loss.item()
             val_loss /= len(self.val_loader_distill)
 
-            print(f"=== Epoch {epoch + 1}/1000 ===")
+            print(f"=== Epoch {epoch + 1}/{self.epochs} ===")
             print(f"Train loss: {train_loss:.4f}")
             print(f"Val loss: {val_loss:.4f}")
             print(f"Learning rate: {self.optimizer_distill.param_groups[0]['lr']:.2e}")
@@ -491,6 +623,8 @@ class Trainer:
             self.__plot_losses(distill=True)
 
     def compile_distill(self) -> None:
+        if self.model_distill is None:
+            raise ValueError("Distilled model not initialized.")
         self.model_distill.eval()
         print("Compiling distillation started.")
 
@@ -509,7 +643,8 @@ class Trainer:
                 self.dim_data = dim_data
 
             def forward(self, condition: torch.Tensor) -> torch.Tensor:
-                condition = self.transform_inc(condition)
+                condition = torch.clone(condition)
+                condition[:, :1] = self.transform_inc(condition[:, :1])
                 samples = self.model.sample(
                     (condition.shape[0], self.dim_data), condition
                 )
@@ -525,12 +660,7 @@ class Trainer:
         sampler = copy.deepcopy(sampler)
         sampler = sampler.to("cpu")
         sampler = sampler.to(torch.float32)
-        sampler = torch.jit.trace(
-            sampler,
-            example_inputs=50.0
-            * torch.ones(1, self.dim_condition, dtype=torch.float32),
-            check_trace=False,
-        )
+        sampler = torch.jit.trace(sampler, self.example_inputs, check_trace=False)
         torch.jit.save(sampler, self.compiled_path.replace(".pt", "_distill.pt"))
         print("Compiling distillation finished.")
         sys.stdout.flush()
@@ -588,10 +718,12 @@ def parse_args(args: list | None = None) -> argparse.Namespace:
 
 
 def main(args: list | None = None) -> None:
-    args = parse_args(args)
-    config = yaml.safe_load(open(args.config))
-    if args.device:
-        device = torch.device(args.device)
+    mpl.use("Agg")  # Use non-interactive backend for plotting
+    parsed_args = parse_args(args)
+    with open(parsed_args.config) as file:
+        config = yaml.safe_load(file)
+    if parsed_args.device:
+        device = torch.device(parsed_args.device)
     elif torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
@@ -601,16 +733,17 @@ def main(args: list | None = None) -> None:
     if "result_path" in config:
         result_dir = config["result_path"]
     else:
-        result_dir = setup_result_path(config["name"], args.config, args.fast_dev_run)
-    # num_new_samples = config["training"].get("num_new_samples", 100_000)
-    # save_noise = config["training"].get("save_noise", False)
-    if args.fast_dev_run:
+        result_dir = setup_result_path(
+            config["name"], parsed_args.config, parsed_args.fast_dev_run
+        )
+    num_new_samples = config["training"].get("num_new_samples", 50_000)
+    if parsed_args.fast_dev_run:
         config["data"]["num_train"] = 100
         config["data"]["num_val"] = 10
         config["data"]["batch_size"] = 2
         config["data"]["batch_size_val"] = 2
         config["training"]["epochs"] = 2
-        # num_new_samples = 10
+        num_new_samples = 10
     trainer = Trainer(
         model_config=config["model"],
         data_config=config["data"],
@@ -620,47 +753,47 @@ def main(args: list | None = None) -> None:
     )
     trainer.train()
 
-    # if not os.path.exists(trainer.new_samples_path):
-    #     print("Sampling started.")
-    #     sys.stdout.flush()
-    #     cond_test = 10.139 + 80 * torch.rand((num_new_samples, 1))
-    #     trainer.sample_and_save(cond_test, 4096, save_noise=save_noise)
-    #     print("Sampling finished.")
-    #     print()
-    #     sys.stdout.flush()
+    if not os.path.exists(trainer.new_samples_path) and not parsed_args.distill:
+        print("Sampling started.")
+        sys.stdout.flush()
+        cond_test = trainer.get_val_condition(num_new_samples)
+        trainer.sample_and_save(cond_test, 4096, save_noise=False)
+        print("Sampling finished.")
+        print()
+        sys.stdout.flush()
 
     if not os.path.exists(trainer.compiled_path):
         trainer.compile()
 
-    if args.distill:
+    if parsed_args.distill:
         trainer.distill()
         trainer.compile_distill()
 
-    if args.distill and not os.path.exists(trainer.new_samples_path_distilled):
+    if parsed_args.distill and not os.path.exists(trainer.new_samples_path_distilled):
         print("Sampling distilled model.")
         sys.stdout.flush()
-        cond_test = 10.139 + 80 * torch.rand((100_000, 1))
+        cond_test = trainer.get_val_condition(num_new_samples)
         trainer.sample_and_save(cond_test, 4096, distilled=True)
         print("Sampling finished.")
         print()
         sys.stdout.flush()
 
-    if args.time:
+    if parsed_args.time:
         print("Timing started.")
         sys.stdout.flush()
         torch.set_num_threads(1)
         trainer.to("cpu")
-        cond_test = 10.139 + 80 * torch.rand((10, 1))
+        cond_test = trainer.get_val_condition(10)
         trainer.sample_batch(cond_test, 1, verbose=True)
-        if args.distill:
+        if parsed_args.distill:
             trainer.sample_batch(cond_test, 1, verbose=True, distilled=True)
 
         torch.set_default_dtype(torch.float16)
         trainer.to(torch.float16)
-        cond_test = 10.139 + 80 * torch.rand((10, 1))
+        cond_test = trainer.get_val_condition(10)
         trainer.new_samples_path = os.path.join(result_dir, "new_samples_fp16.h5")
         trainer.sample_and_save(cond_test, 1, verbose=True)
-        if args.distill:
+        if parsed_args.distill:
             trainer.sample_batch(cond_test, 1, verbose=True, distilled=True)
 
 

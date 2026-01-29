@@ -10,20 +10,18 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.12
+          python-version: 3.13
           cache: 'pip'
       - name: Install requirements
         run: |
           pip install --upgrade pip
-          pip install torch==2.6.* --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt
+          pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -e .
       - name: Download data
         run: |
-          mkdir data
-          curl -o data/pions.h5 https://syncandshare.desy.de/index.php/s/492zF37HeR6FaCG/download/test-sf.h5
+          mkdir -p data
+          curl -o data/layer_level.h5 https://syncandshare.desy.de/public.php/dav/files/3ejTeJZzZP4BGpX
       - name: Test with Unittest
         run: python -m unittest discover --verbose  -s test -p '*_test.py'
-        env:
-          PYTHONPATH: src/
       - name: Fast development run
-        run: python src/trainer.py --fast-dev-run --device cpu config/config.yaml
+        run: python pointcountfm/trainer.py --time --fast-dev-run --device cpu config/config.yaml

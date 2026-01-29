@@ -1,11 +1,14 @@
+*.pdf
+*.ipynb
+*.h5
+*.svg
+uv.lock
+
 data
 log
-notebooks
 results
-plots
 run
 .vscode
-compile_commands.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

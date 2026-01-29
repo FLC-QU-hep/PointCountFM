@@ -32,7 +32,7 @@ class FullyConnected(nn.Module):
         self,
         t: torch.Tensor,
         x: torch.Tensor,
-        condition: torch.Tensor = None,
+        condition: torch.Tensor | None = None,
     ) -> torch.Tensor:
         input = [t, x]
         if condition is not None:
@@ -89,9 +89,9 @@ class ConcatSquash(nn.Module):
         self,
         t: torch.Tensor,
         x: torch.Tensor,
-        condition: torch.Tensor,
+        condition: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        condition = torch.cat([t, condition], dim=-1)
+        condition = t if condition is None else torch.cat([t, condition], dim=-1)
         for layer in self.layers:
             x = layer(x, condition)
         return self.output(x)

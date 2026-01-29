@@ -1,93 +1,110 @@
 # PointCountFM
-A conditional flow matching model to generate the number of points per layer in a particle shower. The model can be used as part of a generative model for particle showers. It generates the number of points per layer in a particle shower given the incident energy.
+[![Python Version](https://img.shields.io/badge/Python_3.13-306998?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch Version](https://img.shields.io/badge/PyTorch_2.8-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/FLC-QU-hep/PointCountFM?tab=MIT-1-ov-file)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/FLC-QU-hep/PointCountFM/pre_commit.yaml?label=pre-commit&logo=github)](https://github.com/FLC-QU-hep/PointCountFM/actions/workflows/pre_commit.yaml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/FLC-QU-hep/PointCountFM/test.yaml?label=tests&logo=github)](https://github.com/FLC-QU-hep/PointCountFM/actions/workflows/test.yaml)
 
-## requirements
+A conditional flow matching model to generate the number of points per layer in a particle shower. The model can be used as part of a generative model for particle showers. It generates the number of points per layer in a particle shower given the incident particle type and kinematics.
+
+## Table of Contents <!-- omit in toc -->
+- [Requirements](#requirements)
+- [Setup](#setup)
+  - [Clone repository](#clone-repository)
+  - [Install dependencies](#install-dependencies)
+- [Data](#data)
+- [Usage](#usage)
+  - [options](#options)
+- [configuration](#configuration)
+  - [model](#model)
+  - [data](#data-1)
+  - [training](#training)
+- [pre-commit](#pre-commit)
+- [Testing](#testing)
+
+
+## Requirements
 - pytorch: for training and inference of ML models
 - numpy: only as input/output data format
 - matplotlib: for visualization of data
 - h5py: for reading training data and saving generated data
-- PyYAML: for reading configuration files
+- pyyaml: for reading configuration files
+- showerdata: for handling calorimeter shower data
 
-## setup
-To install the python requirements, you can use either pip or conda. Choose the method that fits your environment best. Only the pip setup has been tested properly. The C++ setup is only required if you want to run the C++ inference code.
+## Setup
 
-### python (with conda)
-With conda, you can install the required packages by running:
+### Clone repository
+To clone the repository, run:
 ```bash
-# make sure to have conda installed and loaded
-conda env create -f environment.yml
-conda activate fastshowerflow
-```
-This will create a new conda environment called `fastshowerflow` and install all required packages. All necessary development packages are included in `environment.yml` file.
-
-### python (with pip)
-Use this instead of conda if you do not want to use conda. With pip, you can install the required packages by running:
-```bash
-# module load maxwell python/3.12
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements/dev.txt
-```
-On Maxwell, you can use the provided `module load` command to load python 3.12. Make sure not to have loaded any conflicting modules. This will create a new virtual environment called `venv` and install all required packages. If do not need the development packages, you can use `requirements.txt` instead of `requirements/dev.txt`.
-
-### c++ (optional)
-The C++ code is compiled using CMake. To compile the code, run the following commands:
-```bash
-# make sure to have cmake, hdf5, and a C++ compiler available
-# on Maxwell HPC, you can uncomment the following command to load the required modules:
-#module load maxwell gcc/12.2 cmake/3.28.3 hdf5/1.14.3
-
-# manually install libtorch
-mkdir lib
-cd lib
-curl -o libtorch.zip https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Bcpu.zip
-unzip libtorch.zip
-cd ..
-
-# create a build directory and compile the code
-mkdir build
-cd build
-cmake -DCMAKE_PREFIX_PATH="../lib/libtorch" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-      ../cpp
-make
+git clone git@github.com:FLC-QU-hep/PointCountFM.git
+cd PointCountFM
 ```
 
-## data
-On default, the training data is expected to be in `data/pions.h5`. This file contains the following datasets:
-- `energy`: the incident energy of the particle (shape: `(n_showers,1)
-- `num_points`: the number of points per layer (shape: `(n_showers,n_layers)`)
-`num_layers` must be the same as `model/dim_input` in the configuration file.
+### Install dependencies
+Choose one of the following options to install the required dependencies. Only `uv` has to be tested.
 
-## usage
-The main entry point is the `src/trainer.py` script. It can be run with the following command:
+#### With `uv` (option 1):
 ```bash
-python src/trainer.py [options] config/config.yaml
+uv sync --all-groups
+source .venv/bin/activate
 ```
-The configuration file `config/config.yaml` specifies all hyperparameters, preprocessing steps, and the training data. The script will train a model and save it to `results/%Y%m%d_%H%M%S_name/` where `name` is the name specified in the configuration file and `%Y%m%d_%H%M%S` is the current date and time. It also generates 10000 samples and saves them to `results/%Y%m%d_%H%M%S_name/n_samples.h5`.
+
+#### With `pip` + `venv` (option 2):
+```bash
+python3.13 -m venv --prompt PointCountFM .venv
+source .venv/bin/activate
+pip install -e .
+pip install --group dev
+```
+If you want to try to run the code with a different python version, you might need to adapt the `pyproject.toml` file accordingly.
+
+#### With `conda` (option 3):
+```bash
+conda env create -f environment.yaml
+conda activate PointCountFM
+pip install -e .
+```
+All packages available from conda-forge will be installed via conda, the rest via pip.
+
+## Data
+You can use your own data or download the AllShowers dataset from Zenodo: [https://zenodo.org/records/18020348](https://zenodo.org/records/18020348)
+To download layer level shower data (1.3 GB), run:
+```bash
+mkdir data
+curl -o data/layer_level.h5 https://zenodo.org/records/18020348/files/layer_level.h5?download=1
+```
+If you want to use you own data, store it in HDF5 format with the following keys:
+
+| key        | shape  | dtype   | description                                       |
+|------------|--------|---------|---------------------------------------------------|
+| directions | (n, 3) | float32 | incident particle directions                      |
+| energies   | (n, 1) | float32 | incident particle energies (in any consistent unit) |
+| labels     | (n)    | int32   | incident particle labels                          |
+| num_points | (n, m) | int32   | number of points per layer                        |
+
+n is the data set size and m is the number of layers in the calorimeter, which needs to be consistent with `dim_input` in the configuration file.
+
+## Usage
+The main entry point is the `pointcountfm/trainer.py` script. It can be run with the following command:
+```bash
+python pointcountfm/trainer.py [options] config/config.yaml
+```
+The configuration file `config/config.yaml` specifies all hyper-parameters, preprocessing steps, and the training data. The script will train a model and save it to `results/%Y%m%d_%H%M%S_name/` where `name` is the name specified in the configuration file and `%Y%m%d_%H%M%S` is the current date and time. It also generates 50,000 samples and saves them to `results/%Y%m%d_%H%M%S_name/new_samples.h5`.
 
 ### options
 | Option          | Short | Description                                             |
 |-----------------|-------|---------------------------------------------------------|
 | `--help`        | `-h`  | Show the help message                                   |
-| `--device`      | `-d`  | The device to run the model on (`cpu` or `cuda`) (if not specified it will be automatically selected) |
+| `--device`      | `-d`  | The device to run the model on (e.g. `cpu`, `mps`, or `cuda`) (if not specified it will be automatically selected) |
 | `--time`        | `-t`  | Run a timing test on the model                          |
-| `--fast-dev-run`|       | Run a fast development run                              |
-
-
-### cpp inference
-The C++ code can be run with the following command:
-```bash
-./build/inference results/%Y%m%d_%H%M%S_name/compiled.pt results/%Y%m%d_%H%M%S_name/cpp_samples.h5 [n_samples]
-```
-This will load the model from `results/%Y%m%d_%H%M%S_name/compiled.pt` and generate `n_samples` samples. If `n_samples` is not specified, it will generate 100 samples. The samples are saved to `results/%Y%m%d_%H%M%S_name/cpp_samples.h5`.
+| `--fast-dev-run`|       | Run a fast development run for testing                  |
 
 ## configuration
 The configuration file is a YAML with the following keys:
-- `model`: specifies the model architecture and hyperparameters
+
+- `model`: specifies the model architecture and hyper-parameters
 - `data`: specifies the training data and preprocessing steps
-- `training`: specifies the training hyperparameters
+- `training`: specifies the training hyper-parameters
 - `name`: a descriptive name for the run
 
 ### model
@@ -95,7 +112,7 @@ The configuration file is a YAML with the following keys:
 |-----------------|--------|---------------------------------------------------------|
 | `name`          | string | The model class (`FullyConnected` or `ConcatSquash`)    |
 | `dim_input`     | int    | The dimension of the input data                         |
-| `dim_condition` | int    | The dimension of the condition                          |
+| `dim_condition` | int    | The dimension of the condition (number of particle labels + 3 (directions) + 1 (energies))                      |
 | `dim_time`      | int    | The dimension of the time embedding                     |
 | `hidden_dims`   | list   | A list of hidden dimensions for the model               |
 
@@ -112,8 +129,8 @@ The configuration file is a YAML with the following keys:
 | Key             | Type   | Description                                             |
 |-----------------|--------|---------------------------------------------------------|
 | `epochs`        | int    | The number of epochs to train the model                 |
-| `optimizer`     | dict   | The optimizer (`name` key) and its hyperparameters      |
-| `scheduler`     | dict   | The learning rate scheduler (`name` key) and its hyperparameters (optional) |
+| `optimizer`     | dict   | The optimizer (`name` key) and its hyper-parameters     |
+| `scheduler`     | dict   | The learning rate scheduler (`name` key) and its hyper-parameters (optional) |
 
 If you use OneCycleLR or CosineAnnealing as a scheduler, the maximum number of iterations is calculated automatically.
 
@@ -122,7 +139,6 @@ For an example configuration file, see `config/config.yaml`.
 ## pre-commit
 This repository uses [pre-commit](https://pre-commit.com) to run checks on the code before committing. To install pre-commit, run:
 ```bash
-# pip install pre-commit  # already in the def.txt requirements file
 pre-commit install
 ```
 This will install pre-commit and set up the checks. If you want to run the checks manually, you can run:
@@ -130,6 +146,12 @@ This will install pre-commit and set up the checks. If you want to run the check
 pre-commit run --all-files
 ```
 This will run all checks on all files.
+
+## Testing
+To run the unit tests, run:
+```bash
+python -m unittest discover -s test -p "*_test.py" -v
+```
 
 ---
 If you have any questions or comments about this repository, please contact [thorsten.buss@uni-hamburg.de](mailto:thorsten.buss@uni-hamburg.de).

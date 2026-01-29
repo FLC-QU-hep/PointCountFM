@@ -1,8 +1,9 @@
 default_language_version:
   python: python3
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -13,22 +14,14 @@ repos:
       - id: check-case-conflict
       - id: check-added-large-files
       - id: check-merge-conflict
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.5
+    rev: v0.14.13
     hooks:
-      - id: ruff
-        types: [python]
-        args:
-          - "check"
-          - "--fix"
-          - "--target-version"
-          - "py310"
-          - "--select"
-          - "I"
+      - id: ruff-check
       - id: ruff-format
-        types: [python]
-  - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: v19.1.7
+
+  - repo: https://github.com/google/yamlfmt
+    rev: v0.21.0
     hooks:
-      - id: clang-format
-        types_or: [c++, c, cuda]
+      - id: yamlfmt

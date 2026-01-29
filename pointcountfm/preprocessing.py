@@ -38,7 +38,10 @@ class Sequence(Transformation):
 
     def fit(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         for module in self.sub_modules:
-            x = module.fit(x, mask)
+            if isinstance(module, Transformation):
+                x = module.fit(x, mask)
+            else:
+                raise ValueError("All sub-modules must be of type Transformation")
         return x
 
     def forward(self, x: torch.Tensor):
@@ -48,7 +51,10 @@ class Sequence(Transformation):
 
     def inverse(self, x: torch.Tensor):
         for module in self.sub_modules[::-1]:
-            x = module.inverse(x)
+            if isinstance(module, Transformation):
+                x = module.inverse(x)
+            else:
+                raise ValueError("All sub-modules must be of type Transformation")
         return x
 
 

@@ -19,9 +19,8 @@ class CNF(nn.Module):
         super().__init__()
         self.network = network
         self.acceleration = acceleration
-        self.register_buffer(
-            name="frequencies",
-            tensor=(torch.arange(1, frequencies + 1) * torch.pi).reshape(1, -1),
+        self.frequencies = nn.Buffer(
+            torch.arange(1, frequencies + 1).reshape(1, -1) * torch.pi
         )
 
     def forward(self, t: Tensor, x: Tensor, condition: Tensor) -> Tensor:
@@ -61,10 +60,7 @@ class CNF(nn.Module):
             [x.shape[0]] + [1] * (x.dim() - 1), device=x.device, dtype=x.dtype
         )
         t_ = self.time_trafo(t)
-        if noise is not None:
-            z = noise
-        else:
-            z = torch.randn_like(x)
+        z = noise if noise is not None else torch.randn_like(x)
         y = (1 - t_) * x + (1e-4 + (1 - 1e-4) * t_) * z
         u = (1 - 1e-4) * z - x
         u = self.time_derivative(t) * u
@@ -117,14 +113,14 @@ class Distilled(nn.Module):
             raise NotImplementedError(
                 "Distilled CNF does not support acceleration yet."
             )
-        self.register_buffer("frequencies", cnf.frequencies.clone())
+        self.frequencies = nn.Buffer(cnf.frequencies.clone())
 
         t = torch.ones(
             (1, 1), device=cnf.frequencies.device, dtype=cnf.frequencies.dtype
         )
         t = self.frequencies * t
         t = torch.cat((t.cos(), t.sin()), dim=-1)
-        self.register_buffer("t", t)
+        self.t = nn.Buffer(t)
 
     def forward(self, z: Tensor, condition: Tensor) -> Tensor:
         t = self.t.repeat(z.shape[0], 1)

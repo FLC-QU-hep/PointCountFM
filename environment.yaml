@@ -1,0 +1,16 @@
+name: PointCountFM
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pytorch=2.8
+  - h5py=3.14
+  - numpy=2.3
+  - matplotlib=3.10
+  - PyYAML=6.0
+  - pre-commit=4.5
+  - ipykernel=7.1
+  - ruff=0.14
+  - pip
+  - pip:
+      - showerdata==0.6.0
