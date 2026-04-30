@@ -527,10 +527,18 @@ class Trainer:
             steps=self.steps,
         )
         sampler = copy.deepcopy(sampler)
-        sampler = sampler.to("cpu")
         sampler = sampler.to(torch.float32)
-        sampler = torch.jit.trace(sampler, self.example_inputs, check_trace=False)
-        torch.jit.save(sampler, self.compiled_path)
+        if self.device.type != "cpu":
+            example_input = self.example_inputs.to(self.device)
+            sampler_jit = torch.jit.trace(sampler, example_input, check_trace=False)
+            torch.jit.save(
+                sampler_jit,
+                self.compiled_path.replace(".pt", f"_{self.device.type}.pt"),
+            )
+        sampler = sampler.to("cpu")
+        torch.save(sampler.state_dict(), self.model_path)
+        sampler_jit = torch.jit.trace(sampler, self.example_inputs, check_trace=False)
+        torch.jit.save(sampler_jit, self.compiled_path)
         print("Compiling finished.")
 
     def __init_distill(self) -> None:
