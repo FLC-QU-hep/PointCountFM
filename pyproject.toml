@@ -19,19 +19,19 @@ classifiers = [
 
 dependencies = [
     "h5py~=3.16.0",
-    "matplotlib~=3.10.8",
-    "numpy~=2.4.2",
+    "matplotlib~=3.11.0",
+    "numpy~=2.5.1",
     "pyyaml~=6.0.3",
-    "torch~=2.11.0",
+    "rich~=15.0.0",
     "showerdata~=0.6.1",
-    "rich~=14.3.3",
+    "torch~=2.13.0",
 ]
 
 [dependency-groups]
 dev = [
-    "ipykernel>=7.1,<8.0.0",
-    "pre-commit>=4.5,<5.0.0",
-    "ruff>=0.14.13,<0.15.0",
+    "ipykernel~=7.3.0",
+    "pre-commit~=4.6.0",
+    "ruff~=0.15.21",
 ]
 
 [project.urls]
