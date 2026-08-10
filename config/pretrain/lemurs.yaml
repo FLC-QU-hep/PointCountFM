@@ -1,0 +1,41 @@
+name: pcfm_pretrain_lemurs
+result_path: results/pretrain_lemurs
+
+data:
+  data_file: data/LEMURS_pretraining_4M.h5
+  batch_size: 1024
+  batch_size_val: 4096
+  train_fraction: 0.975
+  max_samples: null
+  use_nlayers_conditioning: true
+  use_direction_conditioning: true
+  transform_num_points:
+    - [Log, {alpha: 0.5}]
+    - [StandardScaler, {shape: [1, 90]}]
+  transform_fsamp:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+  transform_nlayers:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+  # directions are unit vectors — used as-is (no transform needed)
+
+model:
+  name: FullyConnected
+  dim_input: 90       # max layers across LEMURS detectors (par04_siw=90, par04_scipb=45, odd=48, fccee_cld=40)
+  dim_condition: 6    # energy + sampling_fraction + n_layers + dir_x + dir_y + dir_z
+  dim_time: 6
+  hidden_dims: [128, 256, 512, 256, 128]
+
+training:
+  epochs: 400
+  test_every: 100
+
+  # Early stopping on val flow-matching loss.
+  # Trainer reads `patience` (trainer.py:105). 0 = disabled.
+  patience: 30
+
+  optimizer:
+    name: Adam
+    lr: 1.0e-4
+  scheduler:
+    name: OneCycleLR
+    pct_start: 0.5

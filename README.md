@@ -1,157 +1,239 @@
-# PointCountFM
-[![Python Version](https://img.shields.io/badge/Python_3.13-306998?logo=python&logoColor=white)](https://www.python.org/)
-[![PyTorch Version](https://img.shields.io/badge/PyTorch_2.8-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/)
+# Transferable Fast Calorimeter Shower Generation via Multi-Geometry Pre-training
+
+[![arXiv](https://img.shields.io/badge/arXiv-2608.18233-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2608.18233)
+[![Python Version](https://img.shields.io/badge/Python_3.12-306998?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch Version](https://img.shields.io/badge/PyTorch_2.6-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/FLC-QU-hep/PointCountFM?tab=MIT-1-ov-file)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/FLC-QU-hep/PointCountFM/pre_commit.yaml?label=pre-commit&logo=github)](https://github.com/FLC-QU-hep/PointCountFM/actions/workflows/pre_commit.yaml)
-[![Tests](https://img.shields.io/github/actions/workflow/status/FLC-QU-hep/PointCountFM/test.yaml?label=tests&logo=github)](https://github.com/FLC-QU-hep/PointCountFM/actions/workflows/test.yaml)
 
-A conditional flow matching model to generate the number of points per layer in a particle shower. The model can be used as part of a generative model for particle showers. It generates the number of points per layer in a particle shower given the incident particle type and kinematics.
+PointCountFM release (`multi-geometry` branch) for the paper
+**Transferable Fast Calorimeter Shower Generation via Multi-Geometry Pre-training**
+(T. Buss, H. Day-Hall, F. Gaede, G. Kasieczka, K. Krüger, P. McKeown, L. Valente).
+PointCountFM is a conditional flow matching model that generates the number of
+points per calorimeter layer, conditioned on incident energy, sampling fraction
+and number of active layers. In the paper's pipeline it is the condition
+producer: its per-layer counts condition the
+[AllShowers](https://github.com/FLC-QU-hep/AllShowers/tree/multi-geometry)
+point cloud model (`multi-geometry` branch there as well).
 
-## Table of Contents <!-- omit in toc -->
-- [Requirements](#requirements)
-- [Setup](#setup)
-  - [Clone repository](#clone-repository)
-  - [Install dependencies](#install-dependencies)
-- [Data](#data)
-- [Usage](#usage)
-  - [options](#options)
-- [configuration](#configuration)
-  - [model](#model)
-  - [data](#data-1)
-  - [training](#training)
-- [pre-commit](#pre-commit)
-- [Testing](#testing)
-
+The multi-geometry datasets are published in a single research-data record
+([DOI 10.25592/uhhfdm.19103](https://doi.org/10.25592/uhhfdm.19103)) and the
+pre-trained weights on Hugging Face
+([FLC-QU-hep/PointCountFM-multi-geometry](https://huggingface.co/FLC-QU-hep/PointCountFM-multi-geometry)).
+The configurations of the paper's pre-trainings and fine-tunings are in `config/`.
 
 ## Requirements
 - pytorch: for training and inference of ML models
 - numpy: only as input/output data format
 - matplotlib: for visualization of data
 - h5py: for reading training data and saving generated data
-- pyyaml: for reading configuration files
-- showerdata: for handling calorimeter shower data
+- PyYAML: for reading configuration files
 
 ## Setup
+To install the python requirements, you can use either pip or conda. Choose the method that fits your environment best. Only the pip setup has been tested properly. The C++ setup is only required if you want to run the C++ inference code.
 
-### Clone repository
-To clone the repository, run:
+### Python (with conda)
 ```bash
-git clone git@github.com:FLC-QU-hep/PointCountFM.git
-cd PointCountFM
+conda env create -f environment.yml
+conda activate fastshowerflow
 ```
 
-### Install dependencies
-Choose one of the following options to install the required dependencies. Only `uv` has to be tested.
-
-#### With `uv` (option 1):
+### Python (with pip)
 ```bash
-uv sync --all-groups
-source .venv/bin/activate
+# module load maxwell python/3.12
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements/dev.txt
 ```
+On Maxwell, use `module load` to load python 3.12. If you do not need the development packages, use `requirements.txt` instead of `requirements/dev.txt`.
 
-#### With `pip` + `venv` (option 2):
+### C++ (optional)
 ```bash
-python3.13 -m venv --prompt PointCountFM .venv
-source .venv/bin/activate
-pip install -e .
-pip install --group dev
-```
-If you want to try to run the code with a different python version, you might need to adapt the `pyproject.toml` file accordingly.
+# on Maxwell HPC: module load maxwell gcc/12.2 cmake/3.28.3 hdf5/1.14.3
 
-#### With `conda` (option 3):
-```bash
-conda env create -f environment.yaml
-conda activate PointCountFM
-pip install -e .
+mkdir lib && cd lib
+curl -o libtorch.zip https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Bcpu.zip
+unzip libtorch.zip && cd ..
+
+mkdir build && cd build
+cmake -DCMAKE_PREFIX_PATH="../lib/libtorch" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+      ../cpp
+make
 ```
-All packages available from conda-forge will be installed via conda, the rest via pip.
 
 ## Data
-You can use your own data or download the AllShowers dataset from Zenodo: [https://zenodo.org/records/18020348](https://zenodo.org/records/18020348)
-To download layer level shower data (1.3 GB), run:
+The training data is an HDF5 file containing:
+- `energy`: incident energy of the particle, shape `(n_showers, 1)`
+- `num_points`: number of points per layer, shape `(n_showers, max_layers)`
+- `sampling_fraction`: calorimeter sampling fraction, shape `(n_showers, 1)`
+- `n_layers`: number of active layers per shower, shape `(n_showers, 1)`
+
+`max_layers` must match `model/dim_input` in the configuration file.
+
+## Training Workflow
+
+### Step 1: Preprocess the data
+Extract the PCFM training data (per-layer counts + conditioning scalars) from
+the point cloud files of the research-data record
+([DOI 10.25592/uhhfdm.19103](https://doi.org/10.25592/uhhfdm.19103)), placed
+under `data/`:
+
 ```bash
-mkdir data
-curl -o data/layer_level.h5 https://zenodo.org/records/18020348/files/layer_level.h5?download=1
+python src/preprocess_lemurs.py                          # LEMURS pre-training pool
+python src/preprocess_simplebox.py --input ... --output ...   # SimpleBox pool
+python src/preprocess_allegro.py                         # FCCee-ALLEGRO target
 ```
-If you want to use you own data, store it in HDF5 format with the following keys:
 
-| key        | shape  | dtype   | description                                       |
-|------------|--------|---------|---------------------------------------------------|
-| directions | (n, 3) | float32 | incident particle directions                      |
-| energies   | (n, 1) | float32 | incident particle energies (in any consistent unit) |
-| labels     | (n)    | int32   | incident particle labels                          |
-| num_points | (n, m) | int32   | number of points per layer                        |
+Each writes `energy`, `num_points`, `sampling_fraction`, and `n_layers` to a
+per-detector training file under `data/` (e.g. `data/LEMURS_pretraining_4M.h5`).
+See `--help` of each script for the input/output options. The per-detector
+fine-tuning files referenced by the configs (e.g. `data/cld_finetune_150k.h5`)
+follow the same schema and are extracted the same way from the corresponding
+record files.
 
-n is the data set size and m is the number of layers in the calorimeter, which needs to be consistent with `dim_input` in the configuration file.
+### Step 2: Train the model
+```bash
+python src/trainer.py config/pretrain/lemurs.yaml
+```
+
+Trains the FullyConnected flow matching model using the matching config under `config/` (see the Configuration section for the layout). Results are saved per study, then per run: `results/<study>/<run>/`.
+
+### Step 3: Generate condition files for AllShowers
+```bash
+python src/compute_bias_correction.py --result_dir results/<study>/<run>   # per-layer bias-correction fit
+python src/generate_pcfm_cond.py --downstream <name> ...                   # writes the condition .h5
+```
+
+`generate_pcfm_cond.py` samples per-layer point counts from a trained PCFM run
+(preferring `best_physics_model.pt`), applies the fitted bias correction, and
+writes the condition file that the AllShowers `multi-geometry` model
+consumes. Its built-in per-detector defaults assume the internal run layout.
+Point it at your own runs and files with `--pcfm-base`, `--cond-file` and
+`--out-dir` (see `--help`).
+
+---
 
 ## Usage
-The main entry point is the `pointcountfm/trainer.py` script. It can be run with the following command:
+The main entry point is `src/trainer.py`:
 ```bash
-python pointcountfm/trainer.py [options] config/config.yaml
+python src/trainer.py [options] config/pretrain/lemurs.yaml
 ```
-The configuration file `config/config.yaml` specifies all hyper-parameters, preprocessing steps, and the training data. The script will train a model and save it to `results/%Y%m%d_%H%M%S_name/` where `name` is the name specified in the configuration file and `%Y%m%d_%H%M%S` is the current date and time. It also generates 50,000 samples and saves them to `results/%Y%m%d_%H%M%S_name/new_samples.h5`.
 
-### options
+Results are saved to `results/<study>/<run>/` as configured.
+
+### Options
 | Option          | Short | Description                                             |
 |-----------------|-------|---------------------------------------------------------|
 | `--help`        | `-h`  | Show the help message                                   |
-| `--device`      | `-d`  | The device to run the model on (e.g. `cpu`, `mps`, or `cuda`) (if not specified it will be automatically selected) |
-| `--time`        | `-t`  | Run a timing test on the model                          |
-| `--fast-dev-run`|       | Run a fast development run for testing                  |
+| `--device`      | `-d`  | Device to use (`cpu`, `cuda`), auto-selected if omitted |
+| `--fast-dev-run`|       | Run a fast development run (2 epochs, 1000 samples)     |
+| `--no-comet`    |       | Disable Comet ML tracking                               |
 
-## configuration
-The configuration file is a YAML with the following keys:
+### Training Outputs
+```
+results/<study>/<run>/
+  checkpoint.pt          # latest checkpoint (model, optimizer, scheduler, losses)
+  best_model.pt          # best model weights (lowest validation loss)
+  best_physics_model.pt  # best physics score (mean |total-hits bias %|)
+  snapshots/             # periodic epoch_XXXXX.pt snapshots (finetune runs)
+  losses.csv             # epoch, train_loss, val_loss
+  conf.yaml              # copy of the config used
+  plots/
+    loss_vs_epoch.pdf    # train + validation loss (updated every epoch)
+    lr_vs_step.pdf       # learning rate schedule (updated every epoch)
+    test/
+      epoch_50/          # every test_every epochs (fixed-geometry targets)
+        layer_hists.pdf  # per-layer count histograms with ratio panels
+      epoch_100/
+        ...
+```
 
-- `model`: specifies the model architecture and hyper-parameters
-- `data`: specifies the training data and preprocessing steps
-- `training`: specifies the training hyper-parameters
-- `name`: a descriptive name for the run
+### C++ Inference
+```bash
+./build/inference results/<run>/compiled.pt results/<run>/cpp_samples.h5 [n_samples]
+```
+The C++ path expects a TorchScript export (`compiled.pt`) of the trained model.
+The export step is not part of this release.
+
+## Configuration
+`config/` ships the recipe of every training of the multi-geometry paper,
+organised by study:
+- `config/pretrain/`: the three pre-trainings (`simplebox.yaml`, `lemurs.yaml`,
+  `simplebox_mini.yaml`)
+- `config/allegro_finetuning/`: the transfer to FCCee-ALLEGRO, one folder per
+  arm (`from_simplebox/`, `from_lemurs/`, `from_simplebox_mini/`,
+  `from_scratch/`), each at the four dataset sizes `D100.yaml` to `D100k.yaml`
+- `config/{cld,odd,par04_scipb,par04_siw}_finetuning/` and
+  `config/simplebox_finetuning/`: the SimpleBox-pretrained fine-tuning
+  (`D*.yaml`) and the from-scratch baseline (`scratch_D*.yaml`) on the other
+  targets (the SimpleBox held-out top size is `D90k`).
+
+Every file is the as-run recipe of the corresponding paper run, with paths made
+repo-relative. Fine-tuning configs point to a pre-training checkpoint in
+`training.pretrain_weights`. Set it to your own pre-training run or to the
+released weights. The detector `scratch_D*.yaml` baselines carry no pre-trained
+weights, but they do read the pre-training checkpoint for the input transforms
+(`training.pretrain_transforms_from`), matching the paper's like-for-like
+normalisation. That checkpoint file must exist for them too. In the paper the multi-seed
+ALLEGRO bands use these same recipes with `data.data_offset = seed * D` for
+the seed variations (fixed data and `training.seed` at `D100k`).
+
+The configuration file is a YAML with the following keys: `name`, `data`, `model`, `training`.
 
 ### model
 | Key             | Type   | Description                                             |
 |-----------------|--------|---------------------------------------------------------|
-| `name`          | string | The model class (`FullyConnected` or `ConcatSquash`)    |
-| `dim_input`     | int    | The dimension of the input data                         |
-| `dim_condition` | int    | The dimension of the condition (number of particle labels + 3 (directions) + 1 (energies))                      |
-| `dim_time`      | int    | The dimension of the time embedding                     |
-| `hidden_dims`   | list   | A list of hidden dimensions for the model               |
+| `name`          | string | Model class (`FullyConnected` or `ConcatSquash`)        |
+| `dim_input`     | int    | Dimension of the input data (max_layers)                |
+| `dim_condition` | int    | Dimension of the condition vector                       |
+| `dim_time`      | int    | Dimension of the time embedding                         |
+| `hidden_dims`   | list   | Hidden layer dimensions                                 |
 
 ### data
-| Key             | Type   | Description                                             |
-|-----------------|--------|---------------------------------------------------------|
-| `data_file`     | string | The path to the training data                           |
-| `batch_size`    | int    | The batch size for training                             |
-| `batch_size_val`| int    | The batch size for validation                           |
-|`transform_num_points`| list | A list of the preprocessing steps for the number of points per layer (optional) |
-| `transform_inc` | list   | A list of the preprocessing steps for the incident energy (optional) |
+| Key                      | Type   | Description                                             |
+|--------------------------|--------|---------------------------------------------------------|
+| `data_file`              | string | Path to the training HDF5 file                          |
+| `batch_size`             | int    | Training batch size                                     |
+| `batch_size_val`         | int    | Validation batch size                                   |
+| `train_fraction`         | float  | Fraction of data used for training (default: 0.975)     |
+| `max_samples`            | int    | Max samples to load (null for all)                      |
+| `use_nlayers_conditioning`| bool  | Include n_layers in the condition vector                |
+| `transform_num_points`   | list   | Preprocessing transforms for num_points                 |
+| `transform_fsamp`        | list   | Preprocessing transforms for sampling_fraction          |
+| `transform_nlayers`      | list   | Preprocessing transforms for n_layers                   |
 
 ### training
 | Key             | Type   | Description                                             |
 |-----------------|--------|---------------------------------------------------------|
-| `epochs`        | int    | The number of epochs to train the model                 |
-| `optimizer`     | dict   | The optimizer (`name` key) and its hyper-parameters     |
-| `scheduler`     | dict   | The learning rate scheduler (`name` key) and its hyper-parameters (optional) |
+| `epochs`        | int    | Number of training epochs                               |
+| `test_every`    | int    | Generate test plots every N epochs                      |
+| `optimizer`     | dict   | Optimizer config (`name` + hyperparameters)              |
+| `scheduler`     | dict   | LR scheduler config (`name` + hyperparameters, optional)|
 
-If you use OneCycleLR or CosineAnnealing as a scheduler, the maximum number of iterations is calculated automatically.
+If you use `OneCycleLR` or `CosineAnnealingLR` as a scheduler, the total number of steps is calculated automatically.
 
-For an example configuration file, see `config/config.yaml`.
+For an example, see `config/pretrain/lemurs.yaml`.
 
-## pre-commit
-This repository uses [pre-commit](https://pre-commit.com) to run checks on the code before committing. To install pre-commit, run:
+## Pre-commit
 ```bash
+# pip install pre-commit  # already in dev.txt
 pre-commit install
-```
-This will install pre-commit and set up the checks. If you want to run the checks manually, you can run:
-```bash
 pre-commit run --all-files
-```
-This will run all checks on all files.
-
-## Testing
-To run the unit tests, run:
-```bash
-python -m unittest discover -s test -p "*_test.py" -v
 ```
 
 ---
-If you have any questions or comments about this repository, please contact [thorsten.buss@uni-hamburg.de](mailto:thorsten.buss@uni-hamburg.de).
+For questions/comments about the code contact: [thorsten.buss@uni-hamburg.de](mailto:thorsten.buss@uni-hamburg.de)<br/>
+For questions about this `multi-geometry` branch contact: [lorenzo.valente@uni-hamburg.de](mailto:lorenzo.valente@uni-hamburg.de)
+
+The `multi-geometry` branch was written for the paper:
+
+**Transferable Fast Calorimeter Shower Generation via Multi-Geometry Pre-training**<br/>
+[https://arxiv.org/abs/2608.18233](https://arxiv.org/abs/2608.18233)<br/>
+*Thorsten Buss, Henry Day-Hall, Frank Gaede, Gregor Kasieczka, Katja Krüger, Peter McKeown and Lorenzo Valente*
+
+PointCountFM was introduced with the AllShowers backbone in:
+
+**AllShowers: One model for all calorimeter showers**<br/>
+[https://arxiv.org/abs/2601.11716](https://arxiv.org/abs/2601.11716)<br/>
+*Thorsten Buss, Henry Day-Hall, Frank Gaede, Gregor Kasieczka and Katja Krüger*

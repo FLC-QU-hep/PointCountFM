@@ -1,0 +1,61 @@
+data:
+  batch_size: 16
+  batch_size_val: 1024
+  data_file: data/allegro_100k_pcfm.h5
+  max_samples: 100
+  transform_fsamp:
+  - - MinMaxScaler
+    - shape:
+      - 1
+      - 1
+      target_max: 1.0
+      target_min: -1.0
+  transform_nlayers:
+  - - MinMaxScaler
+    - shape:
+      - 1
+      - 1
+      target_max: 1.0
+      target_min: -1.0
+  transform_num_points:
+  - - Log
+    - alpha: 0.5
+  - - StandardScaler
+    - shape:
+      - 1
+      - 45
+  use_direction_conditioning: true
+  use_nlayers_conditioning: true
+  val_samples: 5000
+  data_offset: 0
+model:
+  dim_condition: 6
+  dim_input: 45
+  dim_time: 6
+  dropout: 0.0
+  hidden_dims:
+  - 128
+  - 256
+  - 512
+  - 256
+  - 128
+  name: FullyConnected
+name: pcfm_allegro_finetuning_from_lemurs_D100
+result_path: results/allegro_finetuning/from_lemurs/D100
+training:
+  epochs: 500
+  optimizer:
+    lr: 5.0e-05
+    name: AdamW
+    weight_decay: 0.005
+  patience: 188
+  physics_patience: 50
+  pretrain_weights: results/pretrain_lemurs/best_model.pt
+  scheduler:
+    T_0: 400
+    T_mult: 2
+    eta_min: 1.0e-06
+    name: CosineAnnealingWarmRestarts
+  snapshot_every: 100
+  test_every: 20
+  unfreeze_last_layers: 3

@@ -1,0 +1,43 @@
+name: pcfm_cld_finetuning_D1k
+result_path: results/cld_finetuning/D1k
+
+data:
+  data_file: data/cld_finetune_150k.h5
+  batch_size: 64
+  batch_size_val: 4096
+  val_samples: 5000
+  max_samples: 1000
+  use_nlayers_conditioning: true
+  use_direction_conditioning: true
+  transform_num_points:
+    - [Log, {alpha: 0.5}]
+    - [StandardScaler, {shape: [1, 45]}]
+  transform_fsamp:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+  transform_nlayers:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+
+model:
+  name: FullyConnected
+  dim_input: 45
+  dim_condition: 6
+  dim_time: 6
+  hidden_dims: [128, 256, 512, 256, 128]
+  dropout: 0.1
+
+training:
+  pretrain_weights: results/pretrain_SimpleBox/best_model.pt
+  use_pretrain_transforms: true
+  reset_output_layer: false
+  epochs: 5000
+  patience: 3000
+  physics_patience: 50
+  test_every: 20
+  optimizer:
+    name: AdamW
+    lr: 1.0e-3
+    weight_decay: 0
+  scheduler:
+    name: CosineAnnealingLR
+    T_max: 1000
+    eta_min: 1.0e-6

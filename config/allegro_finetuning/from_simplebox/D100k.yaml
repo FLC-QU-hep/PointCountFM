@@ -1,0 +1,46 @@
+name: pcfm_allegro_finetuning_from_simplebox_D100k
+result_path: results/allegro_finetuning/from_simplebox/D100k
+
+data:
+  data_file: data/allegro_100k_pcfm.h5
+  batch_size: 1024
+  batch_size_val: 4096
+  train_fraction: 0.975
+  val_samples: 5000
+  max_samples: null
+  use_nlayers_conditioning: true
+  use_direction_conditioning: true
+  transform_num_points:
+    - [Log, {alpha: 0.5}]
+    - [StandardScaler, {shape: [1, 45]}]
+  transform_fsamp:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+  transform_nlayers:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+
+model:
+  name: FullyConnected
+  dim_input: 45
+  dim_condition: 6
+  dim_time: 6
+  hidden_dims: [128, 256, 512, 256, 128]
+  dropout: 0.1
+
+training:
+  pretrain_weights: results/pretrain_SimpleBox/best_model.pt
+  # Reset ALL output rows: breaks the L10 trap without freezing any layers.
+  # Full model trainable — encoder can restructure for ALLEGRO geometry.
+  reset_output_layer: true
+  epochs: 3000
+  patience: 300
+  physics_patience: 15
+  test_every: 20
+  optimizer:
+    name: AdamW
+    lr: 1.0e-4
+    weight_decay: 2.0e-4
+  scheduler:
+    name: CosineAnnealingWarmRestarts
+    T_0: 200
+    T_mult: 2
+    eta_min: 1.0e-6

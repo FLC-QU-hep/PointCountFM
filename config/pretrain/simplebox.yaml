@@ -1,0 +1,37 @@
+name: pcfm_pretrain_simplebox
+result_path: results/pretrain_SimpleBox
+
+data:
+  data_file: data/SimpleBox_pretraining_4M.h5
+  batch_size: 1024
+  batch_size_val: 4096
+  train_fraction: 0.975
+  max_samples: null
+  use_nlayers_conditioning: true
+  use_direction_conditioning: true
+  transform_num_points:
+    - [Log, {alpha: 0.5}]
+    - [StandardScaler, {shape: [1, 45]}]
+  transform_fsamp:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+  transform_nlayers:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+  # directions are unit vectors — used as-is (no transform needed)
+
+model:
+  name: FullyConnected
+  dim_input: 45       # num layers
+  dim_condition: 6    # energy + sampling_fraction + n_layers + dir_x + dir_y + dir_z
+  dim_time: 6
+  hidden_dims: [128, 256, 512, 256, 128]
+
+training:
+  epochs: 5000
+  test_every: 100
+
+  optimizer:
+    name: Adam
+    lr: 1.0e-4
+  scheduler:
+    name: OneCycleLR
+    pct_start: 0.5

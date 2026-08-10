@@ -1,0 +1,43 @@
+name: pcfm_par04_siw_finetuning_scratch_D100
+result_path: results/par04_siw_finetuning/scratch_D100
+
+data:
+  data_file: data/par04_siw_finetune_150k.h5
+  batch_size: 16
+  batch_size_val: 4096
+  val_samples: 5000
+  max_samples: 100
+  use_nlayers_conditioning: true
+  use_direction_conditioning: true
+  transform_num_points:
+    - [Log, {alpha: 0.5}]
+    - [StandardScaler, {shape: [1, 90]}]
+  transform_fsamp:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+  transform_nlayers:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+
+model:
+  name: FullyConnected
+  dim_input: 90
+  dim_condition: 6
+  dim_time: 6
+  hidden_dims: [128, 256, 512, 256, 128]
+  dropout: 0.1
+
+training:
+  pretrain_transforms_from: results/pretrain_SimpleBox/best_model.pt
+  use_pretrain_transforms: false
+  max_grad_norm: 1.0
+  epochs: 8000
+  patience: 3000
+  physics_patience: 50
+  test_every: 20
+  optimizer:
+    name: AdamW
+    lr: 2.0e-4
+    weight_decay: 5.0e-4
+  scheduler:
+    name: CosineAnnealingLR
+    T_max: 8000
+    eta_min: 1.0e-6

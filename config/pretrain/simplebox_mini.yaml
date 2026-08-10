@@ -1,0 +1,55 @@
+# 100k-subset SimpleBox PCFM pretrain (cheap-pretrain study, §8 count-model side).
+# IDENTICAL to simplebox.yaml EXCEPT data_file (4M->100k counts) + result_path.
+# Same arch/recipe -> directly comparable to the 4M SimpleBox count pretrain.
+
+name: pcfm_pretrain_simplebox_mini
+result_path: results/pretrain_SimpleBox_mini
+data:
+  data_file: data/SimpleBox_pretraining_100k.h5
+  batch_size: 1024
+  batch_size_val: 4096
+  train_fraction: 0.975
+  max_samples: null
+  use_nlayers_conditioning: true
+  use_direction_conditioning: true
+  transform_num_points:
+  - - Log
+    - alpha: 0.5
+  - - StandardScaler
+    - shape:
+      - 1
+      - 45
+  transform_fsamp:
+  - - MinMaxScaler
+    - shape:
+      - 1
+      - 1
+      target_min: -1.0
+      target_max: 1.0
+  transform_nlayers:
+  - - MinMaxScaler
+    - shape:
+      - 1
+      - 1
+      target_min: -1.0
+      target_max: 1.0
+model:
+  name: FullyConnected
+  dim_input: 45
+  dim_condition: 6
+  dim_time: 6
+  hidden_dims:
+  - 128
+  - 256
+  - 512
+  - 256
+  - 128
+training:
+  epochs: 5000
+  test_every: 100
+  optimizer:
+    name: Adam
+    lr: 0.0001
+  scheduler:
+    name: OneCycleLR
+    pct_start: 0.5

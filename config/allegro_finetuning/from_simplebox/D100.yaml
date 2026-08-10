@@ -1,0 +1,43 @@
+name: pcfm_allegro_finetuning_from_simplebox_D100
+result_path: results/allegro_finetuning/from_simplebox/D100
+
+data:
+  data_file: data/allegro_100k_pcfm.h5
+  batch_size: 16
+  batch_size_val: 1024
+  val_samples: 5000
+  max_samples: 100
+  use_nlayers_conditioning: true
+  use_direction_conditioning: true
+  transform_num_points:
+    - [Log, {alpha: 0.5}]
+    - [StandardScaler, {shape: [1, 45]}]
+  transform_fsamp:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+  transform_nlayers:
+    - [MinMaxScaler, {shape: [1, 1], target_min: -1.0, target_max: 1.0}]
+
+model:
+  name: FullyConnected
+  dim_input: 45
+  dim_condition: 6
+  dim_time: 6
+  hidden_dims: [128, 256, 512, 256, 128]
+  dropout: 0.0
+
+training:
+  pretrain_weights: results/pretrain_SimpleBox/best_model.pt
+  unfreeze_last_layers: 1
+  epochs: 8000
+  patience: 3000
+  physics_patience: 50
+  test_every: 20
+  optimizer:
+    name: AdamW
+    lr: 5.0e-5
+    weight_decay: 5.0e-3
+  scheduler:
+    name: CosineAnnealingWarmRestarts
+    T_0: 400
+    T_mult: 2
+    eta_min: 1.0e-6
