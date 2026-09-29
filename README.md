@@ -1,6 +1,7 @@
 # Transferable Fast Calorimeter Shower Generation via Multi-Geometry Pre-training
 
 [![arXiv](https://img.shields.io/badge/arXiv-2608.18233-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2608.18233)
+[![Hugging Face](https://img.shields.io/badge/Hugging_Face-weights-ffd21e?logo=huggingface&logoColor=white)](https://huggingface.co/FLC-QU-hep/PointCountFM-multi-geometry)
 [![Python Version](https://img.shields.io/badge/Python_3.12-306998?logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch Version](https://img.shields.io/badge/PyTorch_2.6-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/FLC-QU-hep/PointCountFM?tab=MIT-1-ov-file)
