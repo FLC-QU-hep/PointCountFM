@@ -1,5 +1,6 @@
 # Transferable Fast Calorimeter Shower Generation via Multi-Geometry Pre-training
 
+[![JINST](https://img.shields.io/badge/JINST-21_P10041-004e8c)](https://doi.org/10.1088/1748-0221/21/10/P10041)
 [![arXiv](https://img.shields.io/badge/arXiv-2608.18233-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2608.18233)
 [![Hugging Face](https://img.shields.io/badge/Hugging_Face-weights-ffd21e?logo=huggingface&logoColor=white)](https://huggingface.co/FLC-QU-hep/PointCountFM-multi-geometry)
 [![Python Version](https://img.shields.io/badge/Python_3.12-306998?logo=python&logoColor=white)](https://www.python.org/)
@@ -230,6 +231,7 @@ For questions about this `multi-geometry` branch contact: [lorenzo.valente@uni-h
 The `multi-geometry` branch was written for the paper:
 
 **Transferable Fast Calorimeter Shower Generation via Multi-Geometry Pre-training**<br/>
+JINST 21 (2026) P10041, [https://doi.org/10.1088/1748-0221/21/10/P10041](https://doi.org/10.1088/1748-0221/21/10/P10041)<br/>
 [https://arxiv.org/abs/2608.18233](https://arxiv.org/abs/2608.18233)<br/>
 *Thorsten Buss, Henry Day-Hall, Frank Gaede, Gregor Kasieczka, Katja Krüger, Peter McKeown and Lorenzo Valente*
 
